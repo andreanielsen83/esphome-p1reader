@@ -257,17 +257,44 @@ class P1Reader : public Component, public UARTDevice {
     }
 
   private:
+    int timedRead() {
+      const unsigned long _startMillis = millis();
+      int c;
+      do {
+        if (available()) {
+            c = read();
+            if (c >= 0) return c;
+        }
+        else {
+            delay(1);
+        }
+      } while(millis() - _startMillis < 1000); // default timeout is 1000ms
+      return -1;  // indicates timeout
+    }
+
+    int readBytesUntil(const char terminator, char *data, const size_t len) {
+        size_t count = 0;
+        while (count < len) {
+            int c = timedRead();
+            if (c < 0 || terminator == (char) c) break;
+            data[count] = (char) c;
+            count++;
+        }
+        return count;
+    }
+
     void readP1Message() {
       if (available()) {
         uint16_t crc = 0x0000;
         ParsedMessage parsed = ParsedMessage();
         bool telegramEnded = false;
+//        ESP_LOGI("avai", "available: %d", available());
 
         while (available()) {
-          int len = Serial.readBytesUntil('\n', buffer, BUF_SIZE);
+          int len = readBytesUntil('\n', buffer, BUF_SIZE-2);
 
+//          ESP_LOGD("data", "CRC %04X len=%d: 0x%02X '%s'", crc, len, buffer[0], buffer);
           if (len > 0) {
-          	ESP_LOGD("data", "%s", buffer);
 
             // put newline back as it is required for CRC calculation
             buffer[len] = '\n';
@@ -307,6 +334,10 @@ class P1Reader : public Component, public UARTDevice {
           if (!telegramEnded && !available()) {
           	// wait for more data
           	delay(40);
+//            int times = 12;
+//            while (!available() && times--) {
+//                delay(25); // no more than 30ms
+//            }
           }
         }
 
